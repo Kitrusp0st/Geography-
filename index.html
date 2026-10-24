@@ -159,6 +159,19 @@ aside{border:1px solid var(--line);border-radius:19px;box-shadow:0 10px 26px #19
 @media(max-width:380px){.opts{grid-template-columns:1fr}.opts button{min-height:45px}.mapwrap{height:43svh;min-height:250px}.modes button{font-size:12px;padding:10px}}
 @media(max-height:460px) and (orientation:landscape) and (max-width:860px){.mapwrap{height:70svh;min-height:220px}}
 
+/* Immersive practice */
+.full-head,.full-bottom{display:none}
+body.map-full-open{overflow:hidden;overscroll-behavior:none}
+.mapwrap.fullmap{position:fixed!important;inset:0!important;width:100vw!important;height:100dvh!important;min-height:0!important;max-height:none!important;z-index:9999;border:0;border-radius:0;box-shadow:none;overflow:hidden}
+.fullmap .full-head{display:flex;position:absolute;top:0;left:0;right:0;z-index:8;flex-direction:column;justify-content:center;align-items:center;text-align:center;gap:4px;min-height:100px;padding:calc(12px + env(safe-area-inset-top)) 12px 12px;background:var(--panel);border-bottom:1px solid var(--line)}
+.full-head small{font-size:13px;color:var(--muted)}.full-head strong{font-size:clamp(18px,4vw,28px);overflow-wrap:anywhere}
+.fullmap .full-bottom{position:absolute;z-index:8;bottom:0;left:0;right:0;display:flex;justify-content:center;align-items:center;gap:12px;min-height:76px;padding:12px 12px calc(12px + env(safe-area-inset-bottom));background:var(--panel);border-top:1px solid var(--line)}
+.full-bottom span{font-size:13px;max-width:45%;overflow-wrap:anywhere}
+.full-bottom button{font:inherit;font-size:14px;min-height:44px;padding:9px 12px;border:1px solid var(--coast);border-radius:11px;background:var(--land);color:var(--ink)}
+.full-bottom #fullNext{background:var(--btn);color:var(--btnText)}.full-bottom #fullNext[hidden]{display:none}
+.fullmap .maptools{top:calc(106px + env(safe-area-inset-top));right:9px}
+.fullmap .maphint{bottom:calc(86px + env(safe-area-inset-bottom));max-width:80%}
+@media(max-width:600px){.fullmap .full-head{min-height:105px}.fullmap .maptools{top:calc(112px + env(safe-area-inset-top))}.fullmap .maptools button{font-size:12px;min-height:38px}.fullmap .full-bottom{justify-content:space-between;gap:7px}.full-bottom span{font-size:12px}.full-bottom button{font-size:12px;padding:8px}}
 </style>
 </head>
 <body>
@@ -175,14 +188,12 @@ aside{border:1px solid var(--line);border-radius:19px;box-shadow:0 10px 26px #19
 <div class="cats" id="cats"></div>
 <main>
   <div class="mapwrap">
-    <div id="map"></div>
+    <div id="map"></div><div class="full-head"><small id="fullKind">Гидросфера</small><strong id="fullName">Карта мира</strong></div><div class="full-bottom"><span id="fullStatus">Выбери объект</span><button id="fullNext" hidden>Дальше →</button><button id="fullBack">Выйти ✕</button></div>
     <div class="maptools">
-      <button id="zin" type="button" aria-label="Приблизить">+</button>
-      <button id="zout" type="button" aria-label="Отдалить">−</button>
-      <button id="btnWorld" type="button">Весь мир</button>
+      <button id="btnFull" type="button">⛶ На весь экран</button><button id="btnWorld" type="button">Весь мир</button>
       <button id="btnLabels" type="button" aria-pressed="false">Подписи</button>
     </div>
-    <div class="maphint" id="maphint">Колёсико, два пальца или кнопки «+ −» — приблизить</div>
+    <div class="maphint" id="maphint">Два пальца — плавный масштаб · один — перемещение</div>
     <div class="maperr" id="maperr"><div><b>Карта не загрузилась.</b><br>Проверь интернет и обнови страницу. Пока можно тренироваться в режиме «По описанию».</div></div>
   </div>
   <aside id="panel" aria-live="polite"></aside>
@@ -308,7 +319,7 @@ function renderList(){
 // ---------- map ----------
 let chart=null, mapOK=false, downPt=null;
 const WORLD={center:[15,20],zoom:1.15};
-function geoStyle(){return{map:"world",roam:true,scaleLimit:{min:1,max:40},center:WORLD.center,zoom:WORLD.zoom,silent:true,
+function geoStyle(){return{map:"world",roam:"move",scaleLimit:{min:1,max:24},center:WORLD.center,zoom:WORLD.zoom,silent:true,
   itemStyle:{areaColor:css("--land"),borderColor:css("--coast"),borderWidth:.7},label:{show:false}}}
 function initMap(){
   try{
@@ -318,7 +329,7 @@ function initMap(){
     const zr=chart.getZr();
     zr.on("mousedown",e=>{downPt=[e.offsetX,e.offsetY]});
     zr.on("click",e=>{if(downPt&&Math.hypot(e.offsetX-downPt[0],e.offsetY-downPt[1])>6)return;onMapClick(e.offsetX,e.offsetY)});
-    chart.on("click",p=>{if(mode==="study"&&p.data&&p.data.id!=null){studyPick=ITEMS[p.data.id];renderStudy();drawStudy()}});
+    chart.on("click",p=>{if(mode==="study"&&p.data&&p.data.id!=null){studyPick=ITEMS[p.data.id];renderStudy();drawStudy();refreshFull()}});
     window.addEventListener("resize",()=>chart.resize());
     if(window.ResizeObserver)new ResizeObserver(()=>chart.resize()).observe($("#map"));
   }catch(e){mapOK=false;document.body.classList.add("nomap");$("#maperr").style.display="flex";$("#maphint").style.display="none";document.querySelectorAll('[data-mode="find"],[data-mode="what"]').forEach(b=>b.disabled=true);}
@@ -392,7 +403,7 @@ function renderTask(ok,note){
     if(mode==="find"&&!ok)h+=`<button class="ghost" id="show">Приблизить к правильному месту</button>`;
   }else h+=`<button class="ghost" id="skip">Не знаю, покажи ответ</button>`;
   h+=scoreHtml();
-  P.innerHTML=h;P.scrollTop=0;
+  P.innerHTML=h;P.scrollTop=0;refreshFull();
   P.querySelectorAll(".opts button").forEach(b=>b.onclick=()=>{if(answered)return;const o=ITEMS[+b.dataset.id];it._opts.forEach(x=>x._chosen=x.id===o.id);const good=o.id===it.id;
     finish(good,good?null:`Это не ${o.name}`);
     if(mapOK&&mode==="desc"){resetSeries([{type:"scatter",coordinateSystem:"geo",zlevel:2,data:[pt(it,18,css("--ok"),true)]}]);focusOn(it,true)}
@@ -411,7 +422,7 @@ function renderStudy(){
   if(studyPick){const it=studyPick;h+=`<div class="task-kind" style="color:var(${CATS[it.cat].color})">${typeLabel(it)}</div><p class="task-name">${it.name}</p><div class="hint">${it.hint}</div><button class="ghost" id="zoomit">Приблизить</button>`}
   else h+=`<div class="task-kind">Как учить</div><p class="task-name" style="font-size:20px">Нажимай на точки на карте</p><div class="hint">Цвет точки показывает тип объекта. Нажми на точку — увидишь название и подсказку, где он находится. Кнопка «Подписи» включает все названия сразу. Когда освоишься, переходи в «Найди на карте».</div>`;
   h+=`<button class="primary" id="go">Проверить себя</button>`+scoreHtml();
-  P.innerHTML=h;P.scrollTop=0;
+  P.innerHTML=h;P.scrollTop=0;refreshFull();
   $("#go").onclick=()=>setMode(mapOK?"find":"desc");
   const z=$("#zoomit");if(z)z.onclick=()=>focusOn(studyPick,true);
 }
@@ -421,12 +432,34 @@ function setMode(m){
   if(!mapOK&&(m==="find"||m==="what"))m="desc";
   mode=m;document.querySelectorAll(".modes button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.mode===m));
   $("#btnLabels").style.display=m==="study"?"":"none";
-  if(cur)cur._opts=null;newTask();
+  if(cur)cur._opts=null;newTask();refreshFull();
 }
 document.querySelectorAll(".modes button").forEach(b=>b.onclick=()=>setMode(b.dataset.mode));
 $("#btnWorld").onclick=world;
-function zoomBy(f){if(!mapOK)return;const o=chart.getOption().geo[0];chart.setOption({geo:{zoom:Math.min(40,Math.max(1,(o.zoom||1)*f))}})}
-$("#zin").onclick=()=>zoomBy(1.7);$("#zout").onclick=()=>zoomBy(1/1.7);
+function zoomBy(f){if(!mapOK)return;const o=chart.getOption().geo[0];chart.setOption({geo:{zoom:Math.min(24,Math.max(1,(o.zoom||1)*f))}})}
+const mapNode=$("#map");let pinchDistance=null;
+mapNode.addEventListener("wheel",e=>{if(!mapOK)return;e.preventDefault();const dy=e.deltaY*(e.deltaMode===1?16:e.deltaMode===2?240:1);zoomBy(Math.exp(-Math.max(-120,Math.min(120,dy))*.0009))},{passive:false});
+const fingerDistance=e=>Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+mapNode.addEventListener("touchstart",e=>{if(e.touches.length===2)pinchDistance=fingerDistance(e)},{passive:true});
+mapNode.addEventListener("touchmove",e=>{if(e.touches.length!==2){pinchDistance=null;return}e.preventDefault();const d=fingerDistance(e);if(pinchDistance&&d>0)zoomBy(Math.pow(Math.max(.75,Math.min(1.33,d/pinchDistance)),.38));pinchDistance=d},{passive:false});
+mapNode.addEventListener("touchend",e=>{if(e.touches.length<2)pinchDistance=null},{passive:true});
+mapNode.addEventListener("touchcancel",()=>pinchDistance=null,{passive:true});
+let full=false;
+function refreshFull(){
+ const it=mode==="study"?studyPick:cur;
+ $("#fullName").textContent=it?.name||({study:"Выбери объект на карте",find:"Найди на карте",what:"Что это?",desc:"По описанию"}[mode]);
+ $("#fullKind").textContent=it?typeLabel(it):"Гидросфера · тренажёр";
+ $("#fullStatus").textContent=answered?($("#panel .verdict")?.textContent||"Ответ принят").trim():mode==="find"?"Коснись правильного места на карте":mode==="what"?"Определи отмеченный объект":"Исследуй карту";
+ $("#fullNext").hidden=!answered||!$("#next");
+}
+function setFull(v){
+ full=v;document.querySelector(".mapwrap").classList.toggle("fullmap",v);document.body.classList.toggle("map-full-open",v);
+ $("#btnFull").textContent=v?"⤢ Свернуть":"⛶ На весь экран";refreshFull();
+ requestAnimationFrame(()=>chart?.resize());setTimeout(()=>chart?.resize(),180);
+}
+$("#btnFull").onclick=()=>setFull(!full);$("#fullBack").onclick=()=>setFull(false);$("#fullNext").onclick=()=>$("#next")?.click();
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&full)setFull(false)});
+
 bindReset();
 $("#btnLabels").onclick=e=>{showLabels=!showLabels;e.currentTarget.setAttribute("aria-pressed",showLabels);e.currentTarget.textContent=showLabels?"Без подписей":"Подписи";drawStudy()};
 document.addEventListener("keydown",e=>{
