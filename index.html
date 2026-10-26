@@ -382,10 +382,45 @@ function resetSeries(series){if(!mapOK)return;const o=chart.getOption();chart.se
 function world(){if(!mapOK)return;chart.setOption({geo:{center:WORLD.center,zoom:WORLD.zoom}})}
 function focusOn(it,soft){if(!mapOK)return;const z={strait:soft?5:6,gulf:3.2,sea:2.6,island:2.6,pen:2.8}[it.cat];chart.setOption({geo:{center:[it.lon,it.lat],zoom:it.r>1200?2:z}})}
 const pt=(it,size,color,label)=>({id:it.id,name:it.name,value:[it.lon,it.lat],symbolSize:size,itemStyle:{color,borderColor:css("--land"),borderWidth:1.5},label:{show:!!label,formatter:"{b}",position:"right",color:css("--ink"),fontSize:12,fontFamily:"Rubik",textBorderColor:css("--land"),textBorderWidth:3}});
+// Схематичные русла рек: географические ориентиры, не точные гидрографические границы.
+const RIVER_PATHS={
+"Амазонка":[[-73,-4],[-70,-4],[-66,-3],[-62,-3],[-58,-3],[-54,-2],[-50,0]],
+"Миссисипи":[[-95,47],[-93,44],[-92,40],[-90,36],[-91,32],[-90,29]],
+"Парана":[[-47,-20],[-51,-23],[-54,-26],[-57,-29],[-59,-34]],
+"Колорадо":[[-106,40],[-109,39],[-111,37],[-113,35],[-114,33],[-114,31]],
+"Нил":[[32,0],[31,7],[31,14],[32,20],[31,26],[31,30]],
+"Замбези":[[24,-12],[25,-17],[28,-18],[32,-17],[36,-18]],
+"Конго":[[26,-4],[23,-2],[20,0],[17,-1],[15,-4],[12,-6]],
+"Нигер":[[-10,10],[-7,12],[-4,16],[1,17],[5,13],[6,5]],
+"Дунай":[[9,48],[14,48],[19,46],[24,44],[29,45]],
+"Волга":[[33,57],[38,56],[44,53],[47,49],[48,46]],
+"Днепр":[[33,55],[31,51],[32,49],[34,47],[33,46]],
+"Обь":[[85,51],[81,55],[76,59],[70,64],[73,67]],
+"Енисей":[[97,51],[92,55],[90,60],[87,65],[86,71]],
+"Лена":[[108,54],[116,59],[124,63],[127,68],[126,72]],
+"Амур":[[121,49],[127,49],[133,48],[137,49],[141,52]],
+"Янцзы":[[92,34],[99,30],[105,29],[111,30],[117,31],[121,31]],
+"Хуанхэ":[[97,35],[103,37],[109,37],[112,35],[119,37]],
+"Меконг":[[95,33],[99,28],[101,23],[104,18],[105,12],[106,10]],
+"Тигр":[[42,38],[43,36],[44,33],[47,31]],
+"Евфрат":[[39,39],[39,36],[41,34],[44,32],[47,30]],
+"Ганг":[[79,30],[82,26],[87,25],[90,24]],
+"Инд":[[78,34],[73,33],[70,29],[68,25],[67,24]],
+"Амударья":[[71,37],[68,38],[64,40],[60,43]]
+};
+function waterLayers(){
+ const chosen=pool(), rivers=chosen.filter(i=>i.cat==="river"),lakes=chosen.filter(i=>i.cat==="lake"),falls=chosen.filter(i=>i.cat==="falls");
+ const lines=rivers.filter(i=>RIVER_PATHS[i.name]).map(i=>({coords:RIVER_PATHS[i.name],name:i.name}));
+ const layers=[];
+ if(lines.length)layers.push({type:"lines",coordinateSystem:"geo",silent:true,zlevel:1,polyline:true,data:lines,lineStyle:{color:"#2799D0",width:2.8,opacity:.95,cap:"round",join:"round"}});
+ if(lakes.length)layers.push({type:"scatter",coordinateSystem:"geo",silent:true,zlevel:2,symbol:"roundRect",data:lakes.map(i=>({...pt(i,17,"#238EC5",showLabels),symbolSize:[23,13],itemStyle:{color:"#238EC5",borderColor:"#BDEAFF",borderWidth:1}}))});
+ if(falls.length)layers.push({type:"scatter",coordinateSystem:"geo",zlevel:3,symbol:"pin",data:falls.map(i=>({...pt(i,22,"#E38B43",showLabels),symbolSize:24}))});
+ return layers;
+}
 function drawStudy(){
   if(!mapOK)return;
   const data=pool().map(it=>pt(it,studyPick&&studyPick.id===it.id?16:10,css(CATS[it.cat].color),showLabels||(studyPick&&studyPick.id===it.id)));
-  resetSeries([{type:"scatter",coordinateSystem:"geo",data,zlevel:2}]);
+  resetSeries([...waterLayers(),{type:"scatter",coordinateSystem:"geo",data,zlevel:3}]);
 }
 function km(a,b){const R=6371,t=Math.PI/180,dl=(b[1]-a[1])*t,dn=(b[0]-a[0])*t;const h=Math.sin(dl/2)**2+Math.cos(a[1]*t)*Math.cos(b[1]*t)*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(h))}
 function onMapClick(x,y){
