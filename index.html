@@ -1290,27 +1290,44 @@ function riverPixelDistance(pixel,it){
 }
 function onMapClick(x,y){
  if(mode!=="find"||answered||!cur)return;
- const c=chart.convertFromPixel({geoIndex:0},[x,y]);if(!c)return;
+ const c=chart.convertFromPixel({geoIndex:0},[x,y]);
+ if(!c||!c.every(Number.isFinite))return;
  lastClick=c;
  const same=ITEMS.filter(i=>i.cat===cur.cat);
- let near=same[0],nd=Infinity;
  const isRiver=cur.cat==="river"&&!!RIVER_PATHS[cur.name];
- const pixel=[x,y];
- same.forEach(i=>{
-  const d=isRiver&&RIVER_PATHS[i.name]?riverPixelDistance(pixel,i):km(c,[i.lon,i.lat]);
-  if(d<nd){nd=d;near=i}
- });
- const d=isRiver?riverPixelDistance(pixel,cur):km(c,[cur.lon,cur.lat]);
- // Для пальца допускаем более широкую зону нажатия вдоль всей линии.
  const tolerance=window.matchMedia?.("(pointer:coarse)").matches?22:14;
- const ok=isRiver?d<=tolerance:near.id===cur.id&&d<=cur.r;
- const note=ok?null:isRiver
-  ?(nd<=tolerance&&near.id!==cur.id?`Ты показал: ${near.name}`:"Нажми ближе к голубой линии реки")
-  :(near.id!==cur.id&&km(c,[near.lon,near.lat])<=near.r?`Ты показал: ${near.name}`:`Мимо примерно на ${Math.round(d/10)*10} км`);
+ let near=null,nearestDistance=Infinity;
+ for(const i of same){
+  const dist=isRiver&&RIVER_PATHS[i.name]?riverPixelDistance([x,y],i):km(c,[i.lon,i.lat]);
+  if(dist<nearestDistance){nearestDistance=dist;near=i}
+ }
+ const distanceToTarget=isRiver?riverPixelDistance([x,y],cur):km(c,[cur.lon,cur.lat]);
+ const ok=isRiver?distanceToTarget<=tolerance:near?.id===cur.id&&distanceToTarget<=cur.r;
+ // Распознаём соседний объект только если пользователь действительно попал в его область.
+ const hitOther=!ok&&near&&near.id!==cur.id&&(isRiver?nearestDistance<=Math.max(32,tolerance):nearestDistance<=near.r);
+ const note=ok?null:hitOther?`Ты нажал на: ${near.name}`:"Ты нажал мимо отмеченных объектов";
  finish(ok,note);
- const series=isRiver?[...waterLayers([cur],true)]:[{type:"scatter",coordinateSystem:"geo",zlevel:2,data:[pt(cur,18,css("--ok"),true)]}];
- series.push({type:"scatter",coordinateSystem:"geo",zlevel:5,symbol:"pin",symbolSize:26,
-  data:[{value:c,itemStyle:{color:ok?css("--ok"):css("--bad")}}]});
+ const series=[];
+ if(isRiver){
+  // Правильная река зелёная, ошибочно выбранная — оранжевая.
+  const makeRiver=(it,color,width)=>({type:"lines",coordinateSystem:"geo",silent:true,zlevel:4,
+   polyline:true,symbol:["none","arrow"],symbolSize:[0,10],
+   data:[{coords:RIVER_PATHS[it.name]}],lineStyle:{color,width,opacity:1}});
+  series.push(makeRiver(cur,css("--ok"),4));
+  if(hitOther&&RIVER_PATHS[near.name])series.push(makeRiver(near,css("--bad"),4));
+ }else{
+  series.push({type:"scatter",coordinateSystem:"geo",silent:true,zlevel:3,
+   data:[pt(cur,19,css("--ok"),true)]});
+  if(hitOther)series.push({type:"scatter",coordinateSystem:"geo",silent:true,zlevel:4,
+   data:[pt(near,19,css("--bad"),true)]});
+ }
+ // Показываем точное место нажатия и подписываем его, если распознали объект.
+ series.push({type:"scatter",coordinateSystem:"geo",silent:true,zlevel:6,symbol:"pin",
+  data:[{name:hitOther?near.name:ok?cur.name:"Место нажатия",value:c,symbolSize:29,
+   itemStyle:{color:ok?css("--ok"):css("--bad")},
+   label:{show:!ok,formatter:hitOther?near.name:"Здесь нет объекта",position:"top",
+    color:css("--ink"),fontSize:12,fontFamily:"Rubik",
+    textBorderColor:css("--land"),textBorderWidth:4}}]});
  resetSeries(series);
 }
 
