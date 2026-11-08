@@ -390,15 +390,33 @@ function drawStudy(){
 function km(a,b){const R=6371,t=Math.PI/180,dl=(b[1]-a[1])*t,dn=(b[0]-a[0])*t;const h=Math.sin(dl/2)**2+Math.cos(a[1]*t)*Math.cos(b[1]*t)*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(h))}
 function onMapClick(x,y){
   if(mode!=="find"||answered||!cur)return;
-  const c=chart.convertFromPixel({geoIndex:0},[x,y]);if(!c)return;
+  const c=chart.convertFromPixel({geoIndex:0},[x,y]);if(!c||!c.every(Number.isFinite))return;
   lastClick=c;
   const same=ITEMS.filter(i=>i.cat===cur.cat);
-  let near=same[0],nd=1e9;same.forEach(i=>{const d=km(c,[i.lon,i.lat]);if(d<nd){nd=d;near=i}});
+  let near=null,nd=Infinity;
+  same.forEach(i=>{const d=km(c,[i.lon,i.lat]);if(d<nd){nd=d;near=i}});
   const d=km(c,[cur.lon,cur.lat]);
-  const ok=near.id===cur.id&&d<=cur.r;
-  finish(ok, ok?null:(near.id!==cur.id&&km(c,[near.lon,near.lat])<=near.r?`Ты показал: ${near.name}`:`Мимо примерно на ${Math.round(d/10)*10} км`));
-  const series=[{type:"scatter",coordinateSystem:"geo",zlevel:2,data:[pt(cur,18,css("--ok"),true)]},
-    {type:"scatter",coordinateSystem:"geo",zlevel:3,symbol:"pin",symbolSize:26,data:[{value:c,itemStyle:{color:ok?css("--ok"):css("--bad")}}]}];
+  const ok=near?.id===cur.id&&d<=cur.r;
+  // Не выдаём далёкий объект за тот, на который пользователь действительно нажал.
+  const recognized=near&&nd<=near.r;
+  const clickedName=recognized?near.name:null;
+  const note=ok?null:clickedName
+    ?`Ты нажал: ${clickedName}. Правильно: ${cur.name}.`
+    :`Ты нажал на другое место. Правильно: ${cur.name}.`;
+  finish(ok,note);
+  const series=[
+    {type:"scatter",coordinateSystem:"geo",zlevel:2,data:[pt(cur,20,css("--ok"),true)]}
+  ];
+  if(!ok&&recognized&&near.id!==cur.id){
+    const wrong=pt(near,20,css("--bad"),true);
+    wrong.label={...wrong.label,formatter:`Твой выбор: ${near.name}`,position:"top"};
+    series.push({type:"scatter",coordinateSystem:"geo",zlevel:3,data:[wrong]});
+  }
+  // Красный указатель показывает точное место касания, зелёный — верный ответ.
+  series.push({type:"scatter",coordinateSystem:"geo",zlevel:4,symbol:"pin",symbolSize:28,
+    data:[{name:ok?"Верно":"Ты нажал здесь",value:c,itemStyle:{color:ok?css("--ok"):css("--bad")},
+      label:{show:!ok,formatter:"Ты нажал здесь",position:"bottom",color:css("--ink"),
+        fontSize:12,textBorderColor:css("--land"),textBorderWidth:3}}]});
   resetSeries(series);
 }
 
