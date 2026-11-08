@@ -192,6 +192,7 @@ body.map-full-open{overflow:hidden;overscroll-behavior:none}
     <div class="maptools">
       <button id="btnFull" type="button">⛶ На весь экран</button><button id="btnWorld" type="button">Весь мир</button>
       <button id="btnLabels" type="button" aria-pressed="false">Подписи</button>
+      <button id="btnWater" type="button" aria-pressed="false" hidden>🌊 Показать реки</button>
     </div>
     <div class="maphint" id="maphint">Два пальца — плавный масштаб · один — перемещение</div>
     <div class="maperr" id="maperr"><div><b>Карта не загрузилась.</b><br>Проверь интернет и обнови страницу. Пока можно тренироваться в режиме «По описанию».</div></div>
@@ -357,7 +358,7 @@ function renderCats(){
 }
 function renderList(){
   $("#list").innerHTML=pool().map(it=>`<div class="li ${learned(it)?"learned":""}" tabindex="0" data-id="${it.id}"><b><span class="dot" style="background:var(${CATS[it.cat].color})"></span> ${it.name} <span>— ${typeLabel(it)}</span></b>${it.hint}</div>`).join("");
-  $("#list").querySelectorAll(".li").forEach(el=>{const go=()=>{setMode("study");studyPick=ITEMS[+el.dataset.id];renderStudy();focusOn(studyPick,true);window.scrollTo({top:0,behavior:"smooth"})};el.onclick=go;el.onkeydown=e=>{if(e.key==="Enter")go()}});
+  $("#list").querySelectorAll(".li").forEach(el=>{const go=()=>{setMode("study");studyPick=ITEMS[+el.dataset.id];renderStudy();drawStudy();focusOn(studyPick,true);window.scrollTo({top:0,behavior:"smooth"})};el.onclick=go;el.onkeydown=e=>{if(e.key==="Enter")go()}});
 }
 
 // ---------- map ----------
@@ -1231,8 +1232,8 @@ const RIVER_PATHS={
   ]
  ]
 };
-function waterLayers(){
- const chosen=pool(),rivers=chosen.filter(i=>i.cat==="river"),lakes=chosen.filter(i=>i.cat==="lake"),falls=chosen.filter(i=>i.cat==="falls");
+function waterLayers(chosen=pool(), labels=showLabels){
+ const rivers=chosen.filter(i=>i.cat==="river"),lakes=chosen.filter(i=>i.cat==="lake"),falls=chosen.filter(i=>i.cat==="falls");
  const layers=[];
  const riverLines=rivers.filter(i=>RIVER_PATHS[i.name]).map(i=>({id:i.id,coords:RIVER_PATHS[i.name],name:i.name}));
  if(riverLines.length){
@@ -1260,10 +1261,10 @@ function waterLayers(){
   }
  }
  if(lakes.length)layers.push({type:"scatter",coordinateSystem:"geo",silent:true,zlevel:2,symbol:"roundRect",
-  data:lakes.map(i=>({...pt(i,17,"#238EC5",showLabels),symbolSize:[23,13],
+  data:lakes.map(i=>({...pt(i,17,"#238EC5",labels),symbolSize:[23,13],
    itemStyle:{color:"#238EC5",borderColor:"#BDEAFF",borderWidth:1}}))});
  if(falls.length)layers.push({type:"scatter",coordinateSystem:"geo",zlevel:3,symbol:"pin",
-  data:falls.map(i=>({...pt(i,22,"#E38B43",showLabels),symbolSize:24}))});
+  data:falls.map(i=>({...pt(i,22,"#E38B43",labels),symbolSize:24}))});
  return layers;
 }
 function drawStudy(){
@@ -1299,8 +1300,8 @@ function newTask(){
   answered=false;lastClick=null;
   if(mode==="study"){studyPick=studyPick&&selCats.includes(studyPick.cat)?studyPick:null;renderStudy();drawStudy();return}
   cur=pick();lastId=cur.id;
-  if(mode==="find"){world();resetSeries([]);world()}
-  if(mode==="what"){focusOn(cur);resetSeries([{type:"effectScatter",coordinateSystem:"geo",zlevel:2,rippleEffect:{scale:3.2,brushType:"stroke"},data:[pt(cur,14,css("--hl"),false)]}]);focusOn(cur)}
+  if(mode==="find"){world();resetSeries(showWaterInQuiz?waterLayers(pool(),false):[]);world()}
+  if(mode==="what"){focusOn(cur);resetSeries([...waterLayers([cur],false),{type:"effectScatter",coordinateSystem:"geo",zlevel:5,rippleEffect:{scale:3.2,brushType:"stroke"},data:[pt(cur,14,css("--hl"),false)]}]);focusOn(cur)}
   if(mode==="desc"&&mapOK){resetSeries([])}
   renderTask();
 }
@@ -1360,10 +1361,21 @@ function setMode(m){
   if(!mapOK&&(m==="find"||m==="what"))m="desc";
   mode=m;document.querySelectorAll(".modes button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.mode===m));
   $("#btnLabels").style.display=m==="study"?"":"none";
+  $("#btnWater").hidden=m==="study"||m==="desc";
+  if(m==="study")showWaterInQuiz=false;
+  $("#btnWater").setAttribute("aria-pressed",String(showWaterInQuiz));
+  $("#btnWater").textContent=showWaterInQuiz?"🌊 Скрыть реки":"🌊 Показать реки";
   if(cur)cur._opts=null;newTask();refreshFull();
 }
 document.querySelectorAll(".modes button").forEach(b=>b.onclick=()=>setMode(b.dataset.mode));
 $("#btnWorld").onclick=world;
+$("#btnWater").onclick=()=>{
+ showWaterInQuiz=!showWaterInQuiz;
+ $("#btnWater").setAttribute("aria-pressed",String(showWaterInQuiz));
+ $("#btnWater").textContent=showWaterInQuiz?"🌊 Скрыть реки":"🌊 Показать реки";
+ if(mode==="find")resetSeries(showWaterInQuiz?waterLayers(pool(),false):[]);
+ else if(mode==="what"&&cur)resetSeries([...waterLayers(showWaterInQuiz?pool():[cur],false),{type:"effectScatter",coordinateSystem:"geo",zlevel:5,rippleEffect:{scale:3.2,brushType:"stroke"},data:[pt(cur,14,css("--hl"),false)]}]);
+};
 function zoomBy(f){if(!mapOK)return;const o=chart.getOption().geo[0];chart.setOption({geo:{zoom:Math.min(24,Math.max(1,(o.zoom||1)*f))}})}
 const mapNode=$("#map");let pinchDistance=null;
 mapNode.addEventListener("wheel",e=>{if(!mapOK)return;e.preventDefault();const dy=e.deltaY*(e.deltaMode===1?16:e.deltaMode===2?240:1);zoomBy(Math.exp(-Math.max(-120,Math.min(120,dy))*.0009))},{passive:false});
@@ -1372,7 +1384,7 @@ mapNode.addEventListener("touchstart",e=>{if(e.touches.length===2)pinchDistance=
 mapNode.addEventListener("touchmove",e=>{if(e.touches.length!==2){pinchDistance=null;return}e.preventDefault();const d=fingerDistance(e);if(pinchDistance&&d>0)zoomBy(Math.pow(Math.max(.75,Math.min(1.33,d/pinchDistance)),.38));pinchDistance=d},{passive:false});
 mapNode.addEventListener("touchend",e=>{if(e.touches.length<2)pinchDistance=null},{passive:true});
 mapNode.addEventListener("touchcancel",()=>pinchDistance=null,{passive:true});
-let full=false;
+let full=false,showWaterInQuiz=false;
 function refreshFull(){
  const it=mode==="study"?studyPick:cur;
  $("#fullName").textContent=it?.name||({study:"Выбери объект на карте",find:"Найди на карте",what:"Что это?",desc:"По описанию"}[mode]);
@@ -1383,7 +1395,7 @@ function refreshFull(){
 function setFull(v){
  full=v;document.querySelector(".mapwrap").classList.toggle("fullmap",v);document.body.classList.toggle("map-full-open",v);
  $("#btnFull").textContent=v?"⤢ Свернуть":"⛶ На весь экран";refreshFull();
- requestAnimationFrame(()=>chart?.resize());setTimeout(()=>chart?.resize(),180);
+ requestAnimationFrame(()=>{chart?.resize();if(mode==="study")drawStudy()});setTimeout(()=>chart?.resize(),180);
 }
 $("#btnFull").onclick=()=>setFull(!full);$("#fullBack").onclick=()=>setFull(false);$("#fullNext").onclick=()=>$("#next")?.click();
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&full)setFull(false)});
