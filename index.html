@@ -336,7 +336,7 @@ const store={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v)
 let prog=store.get("hydro-prog",{}); // id -> {s:streak,w:wrong,c:correct}
 let selCats=store.get("hydro-cats",Object.keys(CATS));
 if(!selCats.some(c=>["river","lake","falls"].includes(c))){selCats=["river","lake","falls"];store.set("hydro-cats",selCats)}
-let mode="study", cur=null, answered=false, session={ok:0,all:0}, showLabels=false, lastId=null, studyPick=null, lastClick=null;
+let mode="study", cur=null, answered=false, session={ok:0,all:0}, showLabels=false, lastId=null, studyPick=null, lastClick=null, avoidFirstQuizId=null;
 const $=s=>document.querySelector(s);
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const learned=it=>(prog[it.id]?.s||0)>=2;
@@ -422,8 +422,16 @@ function onMapClick(x,y){
 
 // ---------- tasks ----------
 function pick(){
-  const p=pool();let w=p.map(it=>{const s=prog[it.id]||{};return Math.max(.3,1+3*(s.w||0)-1.5*(s.s||0))*(it.id===lastId?0:1)});
-  let t=w.reduce((a,b)=>a+b,0)*Math.random();for(let i=0;i<p.length;i++){t-=w[i];if(t<=0)return p[i]}return p[0];
+  const all=pool();
+  // Первый вопрос не должен раскрывать только что просмотренный в обучении объект.
+  const filtered=avoidFirstQuizId==null?all:all.filter(it=>it.id!==avoidFirstQuizId);
+  const p=filtered.length?filtered:all;
+  avoidFirstQuizId=null;
+  if(!p.length)return null;
+  const w=p.map(it=>{const s=prog[it.id]||{};return Math.max(.3,1+3*(s.w||0)-1.5*(s.s||0))*(it.id===lastId?0:1)});
+  let t=w.reduce((a,b)=>a+b,0)*Math.random();
+  for(let i=0;i<p.length;i++){t-=w[i];if(t<=0)return p[i]}
+  return p[0];
 }
 function options(it){
   const same=ITEMS.filter(i=>i.cat===it.cat&&i.id!==it.id).sort(()=>Math.random()-.5).slice(0,3);
@@ -492,6 +500,12 @@ function bindReset(){const r=$("#reset");if(r)r.onclick=()=>{if(confirm("Сбр�
 
 function setMode(m){
   if(!mapOK&&(m==="find"||m==="what"))m="desc";
+  if(mode==="study"&&m!=="study"){
+    // Убираем подсветку, подписи истока/устья и старый выбор до начала проверки.
+    avoidFirstQuizId=studyPick?.id??null;
+    studyPick=null;
+    if(mapOK)resetSeries([]);
+  }
   mode=m;document.querySelectorAll(".modes button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.mode===m));
   $("#btnLabels").style.display=m==="study"?"":"none";
   if(cur)cur._opts=null;newTask();refreshFull();
