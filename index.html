@@ -181,6 +181,7 @@ body.map-full-open{overflow:hidden;overscroll-behavior:none}
   <div class="modes" role="group" aria-label="Режим">
     <button data-mode="study" aria-pressed="true">Учить</button>
     <button data-mode="find" aria-pressed="false">Найди на карте</button>
+    <button data-mode="source" aria-pressed="false">Истоки рек</button>
     <button data-mode="what" aria-pressed="false">Что это?</button>
     <button data-mode="desc" aria-pressed="false">По описанию</button>
   </div>
@@ -377,7 +378,7 @@ function initMap(){
     chart.on("click",p=>{if(mode==="study"&&p.data&&p.data.id!=null){studyPick=ITEMS[p.data.id];renderStudy();drawStudy();refreshFull()}});
     window.addEventListener("resize",()=>chart.resize());
     if(window.ResizeObserver)new ResizeObserver(()=>chart.resize()).observe($("#map"));
-  }catch(e){mapOK=false;document.body.classList.add("nomap");$("#maperr").style.display="flex";$("#maphint").style.display="none";document.querySelectorAll('[data-mode="find"],[data-mode="what"]').forEach(b=>b.disabled=true);}
+  }catch(e){mapOK=false;document.body.classList.add("nomap");$("#maperr").style.display="flex";$("#maphint").style.display="none";document.querySelectorAll('[data-mode="find"],[data-mode="source"],[data-mode="what"]').forEach(b=>b.disabled=true);}
 }
 function resetSeries(series){if(!mapOK)return;const o=chart.getOption();chart.setOption({backgroundColor:"transparent",geo:{...geoStyle(),center:o.geo[0].center,zoom:o.geo[0].zoom},series},true)}
 function world(){if(!mapOK)return;chart.setOption({geo:{center:WORLD.center,zoom:WORLD.zoom}})}
@@ -1288,8 +1289,74 @@ function riverPixelDistance(pixel,it){
  }
  return best;
 }
+// Проверка истоков: показана только линия текущей реки без стрелки и метки истока.
+function focusOnSource(it){
+ if(!mapOK)return;
+ const path=RIVER_PATHS[it.name];
+ if(!path?.length)return;
+ const lon=path.map(p=>p[0]),lat=path.map(p=>p[1]);
+ const west=Math.min(...lon),east=Math.max(...lon),south=Math.min(...lat),north=Math.max(...lat);
+ const width=east-west,height=north-south;
+ const zoom=Math.min(7,Math.max(2.6,Math.min(65/Math.max(width,2),45/Math.max(height,2))));
+ chart.setOption({geo:{center:[(west+east)/2,(south+north)/2],zoom}});
+}
+function showSourceQuestion(it){
+ const path=RIVER_PATHS[it.name];
+ if(!path)return;
+ world();
+ resetSeries([{type:"lines",coordinateSystem:"geo",silent:true,zlevel:2,polyline:true,
+  data:[{coords:path}],lineStyle:{color:"#2799D0",width:3.6,opacity:1,cap:"round",join:"round"}}]);
+ focusOnSource(it);
+}
+function sourcePixelDistance(pixel,source){
+ const p=chart.convertToPixel({geoIndex:0},source);
+ return p&&p.every(Number.isFinite)?Math.hypot(pixel[0]-p[0],pixel[1]-p[1]):Infinity;
+}
+function drawSourceAnswer(it,clicked,ok,other=null){
+ const path=RIVER_PATHS[it.name],source=path[0],end=path[path.length-1];
+ const series=[{type:"lines",coordinateSystem:"geo",silent:true,zlevel:2,polyline:true,
+  symbol:["none","arrow"],symbolSize:[0,11],data:[{coords:path}],
+  lineStyle:{color:css("--ok"),width:4,opacity:1}},
+ {type:"scatter",coordinateSystem:"geo",silent:true,zlevel:4,
+  data:[{name:it.name,value:source,symbolSize:16,
+   itemStyle:{color:css("--ok"),borderColor:css("--land"),borderWidth:2},
+   label:{show:true,formatter:"{b}",position:"top",color:css("--ink"),fontSize:13,
+    textBorderColor:css("--land"),textBorderWidth:3}}]},
+ {type:"scatter",coordinateSystem:"geo",silent:true,zlevel:3,
+  data:[{value:end,symbolSize:7,itemStyle:{color:"#2799D0"}}]}];
+ if(clicked){
+  series.push({type:"scatter",coordinateSystem:"geo",silent:true,zlevel:5,symbol:"pin",symbolSize:26,
+   data:[{value:clicked,name:other?.name||"",itemStyle:{color:ok?css("--ok"):css("--bad")},
+    label:{show:!ok&&!!other,formatter:other?.name||"",position:"bottom",color:css("--ink"),
+     textBorderColor:css("--land"),textBorderWidth:3}}]});
+ }
+ resetSeries(series);
+}
+function onSourceClick(x,y){
+ const coord=chart.convertFromPixel({geoIndex:0},[x,y]);
+ if(!coord||!coord.every(Number.isFinite))return;
+ const source=RIVER_PATHS[cur.name]?.[0];
+ if(!source)return;
+ lastClick=coord;
+ const tolerance=window.matchMedia?.("(pointer:coarse)").matches?25:17;
+ const distance=sourcePixelDistance([x,y],source);
+ const ok=distance<=tolerance;
+ let other=null,nearest=Infinity;
+ for(const it of ITEMS){
+  if(it.cat!=="river"||it.id===cur.id||!RIVER_PATHS[it.name])continue;
+  const d=sourcePixelDistance([x,y],RIVER_PATHS[it.name][0]);
+  if(d<nearest){nearest=d;other=it}
+ }
+ if(nearest>tolerance)other=null;
+ const note=ok?null:other
+  ?`Ты отметил исток реки ${other.name}. Исток реки ${cur.name} показан зелёным.`
+  :`Исток реки ${cur.name} показан зелёным.`;
+ finish(ok,note);
+ drawSourceAnswer(cur,coord,ok,other);
+}
 function onMapClick(x,y){
- if(mode!=="find"||answered||!cur||!mapOK)return;
+ if(!["find","source"].includes(mode)||answered||!cur||!mapOK)return;
+ if(mode==="source"){onSourceClick(x,y);return;}
  const c=chart.convertFromPixel({geoIndex:0},[x,y]);
  if(!c||!c.every(Number.isFinite))return;
  lastClick=c;
@@ -1344,8 +1411,8 @@ function onMapClick(x,y){
 }
 
 // ---------- tasks ----------
-function pick(){
-  const all=pool(),withoutPreview=all.filter(it=>it.id!==avoidFirstQuizId);
+function pick(items=pool()){
+  const all=items,withoutPreview=all.filter(it=>it.id!==avoidFirstQuizId);
   const p=avoidFirstQuizId!==null&&withoutPreview.length?withoutPreview:all;
   avoidFirstQuizId=null;
   if(!p.length)return null;
@@ -1361,7 +1428,10 @@ function options(it){
 function newTask(){
   answered=false;lastClick=null;
   if(mode==="study"){studyPick=studyPick&&selCats.includes(studyPick.cat)?studyPick:null;renderStudy();drawStudy();return}
-  cur=pick();lastId=cur.id;
+  cur=mode==="source"?pick(ITEMS.filter(it=>it.cat==="river"&&RIVER_PATHS[it.name]?.length>1)):pick();
+  if(!cur){$("#panel").textContent="Нет объектов для этого режима.";return}
+  lastId=cur.id;
+  if(mode==="source"){showSourceQuestion(cur)}
   if(mode==="find"){world();resetSeries(showWaterInQuiz?waterLayers(pool(),false):[]);world()}
   if(mode==="what"){focusOn(cur);resetSeries([...waterLayers([cur],false),{type:"effectScatter",coordinateSystem:"geo",zlevel:5,rippleEffect:{scale:3.2,brushType:"stroke"},data:[pt(cur,14,css("--hl"),false)]}]);focusOn(cur)}
   if(mode==="desc"&&mapOK){resetSeries([])}
@@ -1377,9 +1447,9 @@ function finish(ok,note){
 }
 function renderTask(ok,note){
   const P=$("#panel"), it=cur;
-  const head={find:"Покажи на карте:",what:"Что отмечено на карте?",desc:"Что это за объект?"}[mode];
+  const head={find:"Покажи на карте:",source:"Покажи исток реки:",what:"Что отмечено на карте?",desc:"Что это за объект?"}[mode];
   let h=answered?`<div class="verdict ${ok?"ok":"bad"}">${ok?"Верно!":"Не то."} ${note?`<span style="font-weight:400;color:var(--muted)">${note}</span>`:""}</div>`:`<div class="task-kind">${head}</div>`;
-  if(mode==="find")h+=`<p class="task-name">${it.name}<span class="ttype" style="color:var(${CATS[it.cat].color})">${typeLabel(it)}</span></p>`;
+  if(mode==="find"||mode==="source")h+=`<p class="task-name">${it.name}<span class="ttype" style="color:var(${CATS[it.cat].color})">${mode==="source"?"исток реки":typeLabel(it)}</span></p>`;
   if(mode==="what")h+=`<p class="task-name" style="font-size:18px"><span class="ttype" style="color:var(${CATS[it.cat].color});margin:0">Это ${typeLabel(it)}</span></p>`;
   if(mode==="desc")h+=`<div class="hint">${it.hint}</div><div class="task-name" style="font-size:16px"><span class="ttype" style="color:var(${CATS[it.cat].color});margin:0">Это ${typeLabel(it)}</span></div>`;
   if(mode==="what"||mode==="desc"){
@@ -1387,11 +1457,12 @@ function renderTask(ok,note){
     h+=`<div class="opts">${it._opts.map((o,i)=>`<button data-id="${o.id}" ${answered?"disabled":""} class="${answered?(o.id===it.id?"ok":(o._chosen?"bad":"")):""}"><kbd>${i+1}</kbd> ${o.name}</button>`).join("")}</div>`;
   }
   if(mode==="find"&&!answered)h+=`<div class="task-kind">${it.cat==="river"?"Нажми на любой участок русла реки — от истока до устья.":"Нажми на карте место, где находится этот объект."}</div>`;
+  if(mode==="source"&&!answered)h+=`<div class="task-kind">На карте показана река без направления течения. Нажми там, где она начинается.</div>`;
   if(answered&&it._opts&&mode==="what")h+=`<p class="task-name" style="font-size:22px">${it.name}</p>`;
   if(answered){
     if(mode!=="desc")h+=`<div class="hint"><b>${it.name}</b> — ${typeLabel(it)}. ${it.hint}</div>`;
     h+=`<button class="primary" id="next">Дальше</button>`;
-    if(mode==="find"&&!ok)h+=`<button class="ghost" id="show">Приблизить к правильному месту</button>`;
+    if((mode==="find"||mode==="source")&&!ok)h+=`<button class="ghost" id="show">Приблизить к правильному месту</button>`;
   }else h+=`<button class="ghost" id="skip">Не знаю, покажи ответ</button>`;
   h+=scoreHtml();
   P.innerHTML=h;P.scrollTop=0;refreshFull();
@@ -1401,8 +1472,8 @@ function renderTask(ok,note){
     if(mapOK&&mode==="what"){resetSeries([{type:"scatter",coordinateSystem:"geo",zlevel:2,data:[pt(it,16,css("--ok"),true)]}])}
   });
   const n=$("#next");if(n){n.onclick=()=>{cur._opts=null;newTask()};n.focus({preventScroll:true})}
-  const sh=$("#show");if(sh)sh.onclick=()=>focusOn(it,true);
-  const sk=$("#skip");if(sk)sk.onclick=()=>{if(it._opts)it._opts.forEach(x=>x._chosen=false);finish(false,"Запомни, где он.");if(mapOK){resetSeries([{type:"scatter",coordinateSystem:"geo",zlevel:2,data:[pt(it,18,css("--ok"),true)]}]);focusOn(it,true)}};
+  const sh=$("#show");if(sh)sh.onclick=()=>mode==="source"?focusOnSource(it):focusOn(it,true);
+  const sk=$("#skip");if(sk)sk.onclick=()=>{if(it._opts)it._opts.forEach(x=>x._chosen=false);finish(false,"Запомни, где он.");if(mapOK){if(mode==="source"){drawSourceAnswer(it,null,false);focusOnSource(it)}else{resetSeries([{type:"scatter",coordinateSystem:"geo",zlevel:2,data:[pt(it,18,css("--ok"),true)]}]);focusOn(it,true)}}};
 }
 function scoreHtml(){
   const p=pool(),l=p.filter(learned).length;
@@ -1420,7 +1491,7 @@ function renderStudy(){
 function bindReset(){const r=$("#reset");if(r)r.onclick=()=>{if(confirm("Сбросить прогресс по всем объектам?")){prog={};store.set("hydro-prog",prog);session={ok:0,all:0};renderCats();renderList();newTask()}}}
 
 function setMode(m){
-  if(!mapOK&&(m==="find"||m==="what"))m="desc";
+  if(!mapOK&&(m==="find"||m==="source"||m==="what"))m="desc";
   if(mode==="study"&&m!=="study"){
     avoidFirstQuizId=studyPick?.id??null;
     studyPick=null;
@@ -1428,7 +1499,7 @@ function setMode(m){
   }
   mode=m;document.querySelectorAll(".modes button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.mode===m));
   $("#btnLabels").style.display=m==="study"?"":"none";
-  $("#btnWater").hidden=m==="study"||m==="desc";
+  $("#btnWater").hidden=m==="study"||m==="desc"||m==="source";
   if(m==="study")showWaterInQuiz=false;
   $("#btnWater").setAttribute("aria-pressed",String(showWaterInQuiz));
   $("#btnWater").textContent=showWaterInQuiz?"🌊 Скрыть реки":"🌊 Показать реки";
@@ -1454,10 +1525,10 @@ mapNode.addEventListener("touchcancel",()=>pinchDistance=null,{passive:true});
 let full=false,showWaterInQuiz=false;
 function refreshFull(){
  const it=mode==="study"?studyPick:cur;
- const reveal=mode==="study"||mode==="find"||answered;
- $("#fullName").textContent=(reveal&&it?.name)||({study:"Выбери объект на карте",find:"Найди на карте",what:"Что это за объект?",desc:"Угадай по описанию"}[mode]);
- $("#fullKind").textContent=it?typeLabel(it):"Гидросфера · тренажёр";
- $("#fullStatus").textContent=answered?($("#panel .verdict")?.textContent||"Ответ принят").trim():mode==="find"?"Коснись правильного места на карте":mode==="what"?"Определи отмеченный объект":"Исследуй карту";
+ const reveal=mode==="study"||mode==="find"||mode==="source"||answered;
+ $("#fullName").textContent=(reveal&&it?.name)||({study:"Выбери объект на карте",find:"Найди на карте",source:"Найди исток реки",what:"Что это за объект?",desc:"Угадай по описанию"}[mode]);
+ $("#fullKind").textContent=mode==="source"?"Проверка истоков":it?typeLabel(it):"Гидросфера · тренажёр";
+ $("#fullStatus").textContent=answered?($("#panel .verdict")?.textContent||"Ответ принят").trim():mode==="source"?"Нажми на исток реки":mode==="find"?"Коснись правильного места на карте":mode==="what"?"Определи отмеченный объект":"Исследуй карту";
  $("#fullNext").hidden=!answered||!$("#next");
 }
 function setFull(v){
