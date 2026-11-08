@@ -1323,7 +1323,7 @@ function onMapClick(x,y){
    draw(near,css("--bad"),4,3);
   const end=RIVER_PATHS[cur.name].at(-1);
   series.push({type:"scatter",coordinateSystem:"geo",silent:true,zlevel:4,
-   data:[{name:`Правильно: ${cur.name}`,value:end,symbolSize:13,
+   data:[{name:cur.name,value:end,symbolSize:13,
     itemStyle:{color:css("--ok"),borderColor:css("--land"),borderWidth:2},
     label:{show:true,formatter:"{b}",position:"top",color:css("--ink"),textBorderColor:css("--land"),textBorderWidth:3}}]});
  }else{
