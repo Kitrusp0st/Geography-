@@ -1398,7 +1398,7 @@ function onMapClick(x,y){
   series.push({type:"scatter",coordinateSystem:"geo",zlevel:2,data:[pt(cur,18,css("--ok"),true)]});
   if(!ok&&recognized&&near.id!==cur.id){
    const wrong=pt(near,18,css("--bad"),true);
-   wrong.label={...wrong.label,formatter:`Твой выбор: ${near.name}`,position:"top"};
+   wrong.label={...wrong.label,formatter:near.name,position:"top"};
    series.push({type:"scatter",coordinateSystem:"geo",zlevel:3,data:[wrong]});
   }
  }
