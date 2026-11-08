@@ -1269,7 +1269,7 @@ function waterLayers(chosen=pool(), labels=showLabels){
 }
 function drawStudy(){
   if(!mapOK)return;
-  const data=pool().map(it=>{const p=pt(it,studyPick&&studyPick.id===it.id?16:10,css(CATS[it.cat].color),showLabels||(studyPick&&studyPick.id===it.id)));if(it.cat==="river"&&RIVER_PATHS[it.name])p.value=RIVER_PATHS[it.name][0];return p});
+  const data=pool().map(it=>{const p=pt(it,studyPick&&studyPick.id===it.id?16:10,css(CATS[it.cat].color),showLabels||(studyPick&&studyPick.id===it.id));if(it.cat==="river"&&RIVER_PATHS[it.name])p.value=RIVER_PATHS[it.name][0];return p});
   resetSeries([...waterLayers(),{type:"scatter",coordinateSystem:"geo",data,zlevel:3}]);
 }
 function km(a,b){const R=6371,t=Math.PI/180,dl=(b[1]-a[1])*t,dn=(b[0]-a[0])*t;const h=Math.sin(dl/2)**2+Math.cos(a[1]*t)*Math.cos(b[1]*t)*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(h))}
