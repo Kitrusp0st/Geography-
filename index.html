@@ -1337,7 +1337,7 @@ function onMapClick(x,y){
  series.push({type:"scatter",coordinateSystem:"geo",silent:true,zlevel:5,symbol:"pin",symbolSize:28,
   data:[{name:ok?"Верно":"Твой выбор",value:c,
    itemStyle:{color:ok?css("--ok"):css("--bad")},
-   label:{show:!ok,formatter:"Твой выбор",position:"bottom",color:css("--ink"),
+   label:{show:false,formatter:"",position:"bottom",color:css("--ink"),
     textBorderColor:css("--land"),textBorderWidth:3}}]});
  resetSeries(series);
 }
