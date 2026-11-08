@@ -1234,9 +1234,9 @@ const RIVER_PATHS={
 function waterLayers(){
  const chosen=pool(),rivers=chosen.filter(i=>i.cat==="river"),lakes=chosen.filter(i=>i.cat==="lake"),falls=chosen.filter(i=>i.cat==="falls");
  const layers=[];
- const riverLines=rivers.filter(i=>RIVER_PATHS[i.name]).map(i=>({coords:RIVER_PATHS[i.name],name:i.name}));
+ const riverLines=rivers.filter(i=>RIVER_PATHS[i.name]).map(i=>({id:i.id,coords:RIVER_PATHS[i.name],name:i.name}));
  if(riverLines.length){
-  layers.push({type:"lines",coordinateSystem:"geo",silent:true,zlevel:1,polyline:true,
+  layers.push({type:"lines",coordinateSystem:"geo",silent:false,zlevel:1,polyline:true,
    symbol:["none","arrow"],symbolSize:[0,8],data:riverLines,
    lineStyle:{color:"#2799D0",width:2.7,opacity:.92,cap:"round",join:"round"}});
   const sourcePoints=rivers.filter(i=>RIVER_PATHS[i.name]).map(i=>{
