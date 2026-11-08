@@ -1293,7 +1293,7 @@ function onMapClick(x,y){
  const c=chart.convertFromPixel({geoIndex:0},[x,y]);
  if(!c||!c.every(Number.isFinite))return;
  lastClick=c;
- const same=pool().filter(i=>i.cat===cur.cat);
+ const same=(cur.cat==="river"?ITEMS:pool()).filter(i=>i.cat===cur.cat);
  const isRiver=cur.cat==="river"&&!!RIVER_PATHS[cur.name];
  const touch=!!window.matchMedia?.("(pointer:coarse)").matches;
  const tolerance=touch?22:14;
@@ -1305,6 +1305,7 @@ function onMapClick(x,y){
  const d=isRiver?riverPixelDistance([x,y],cur):km(c,[cur.lon,cur.lat]);
  const recognized=near&&(isRiver?nd<=tolerance:nd<=near.r);
  const ok=isRiver?d<=tolerance:near?.id===cur.id&&d<=cur.r;
+ const clickedRiver=isRiver?(ok?cur:(recognized?near:null)):null;
  const note=ok?null:recognized
   ?`Ты нажал: ${near.name}. Правильно: ${cur.name}.`
   :`Ты нажал в другом месте. Правильно: ${cur.name}.`;
@@ -1325,7 +1326,7 @@ function onMapClick(x,y){
   series.push({type:"scatter",coordinateSystem:"geo",silent:true,zlevel:4,
    data:[{name:cur.name,value:end,symbolSize:13,
     itemStyle:{color:css("--ok"),borderColor:css("--land"),borderWidth:2},
-    label:{show:true,formatter:"{b}",position:"top",color:css("--ink"),textBorderColor:css("--land"),textBorderWidth:3}}]});
+    label:{show:!ok,formatter:"{b}",position:"top",color:css("--ink"),textBorderColor:css("--land"),textBorderWidth:3}}]});
  }else{
   series.push({type:"scatter",coordinateSystem:"geo",zlevel:2,data:[pt(cur,18,css("--ok"),true)]});
   if(!ok&&recognized&&near.id!==cur.id){
@@ -1335,10 +1336,10 @@ function onMapClick(x,y){
   }
  }
  series.push({type:"scatter",coordinateSystem:"geo",silent:true,zlevel:5,symbol:"pin",symbolSize:28,
-  data:[{name:ok?"Верно":"Твой выбор",value:c,
+  data:[{name:clickedRiver?.name||"",value:c,
    itemStyle:{color:ok?css("--ok"):css("--bad")},
-   label:{show:false,formatter:"",position:"bottom",color:css("--ink"),
-    textBorderColor:css("--land"),textBorderWidth:3}}]});
+   label:{show:!!clickedRiver,formatter:clickedRiver?.name||"",position:"bottom",color:css("--ink"),
+    fontSize:13,fontWeight:"bold",textBorderColor:css("--land"),textBorderWidth:3}}]});
  resetSeries(series);
 }
 
