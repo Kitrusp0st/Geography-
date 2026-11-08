@@ -1273,18 +1273,45 @@ function drawStudy(){
   resetSeries([...waterLayers(),{type:"scatter",coordinateSystem:"geo",data,zlevel:3}]);
 }
 function km(a,b){const R=6371,t=Math.PI/180,dl=(b[1]-a[1])*t,dn=(b[0]-a[0])*t;const h=Math.sin(dl/2)**2+Math.cos(a[1]*t)*Math.cos(b[1]*t)*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(h))}
+// Расстояние до любой точки русла на экране, а не только до центра реки.
+function riverPixelDistance(pixel,it){
+ const path=RIVER_PATHS[it.name];
+ if(!path||path.length<2)return Infinity;
+ let best=Infinity;
+ for(let j=1;j<path.length;j++){
+  const a=chart.convertToPixel({geoIndex:0},path[j-1]);
+  const b=chart.convertToPixel({geoIndex:0},path[j]);
+  if(!a||!b||![...a,...b].every(Number.isFinite))continue;
+  const vx=b[0]-a[0],vy=b[1]-a[1],length2=vx*vx+vy*vy;
+  const t=length2?Math.max(0,Math.min(1,((pixel[0]-a[0])*vx+(pixel[1]-a[1])*vy)/length2)):0;
+  best=Math.min(best,Math.hypot(pixel[0]-a[0]-t*vx,pixel[1]-a[1]-t*vy));
+ }
+ return best;
+}
 function onMapClick(x,y){
-  if(mode!=="find"||answered||!cur)return;
-  const c=chart.convertFromPixel({geoIndex:0},[x,y]);if(!c)return;
-  lastClick=c;
-  const same=ITEMS.filter(i=>i.cat===cur.cat);
-  let near=same[0],nd=1e9;same.forEach(i=>{const d=km(c,[i.lon,i.lat]);if(d<nd){nd=d;near=i}});
-  const d=km(c,[cur.lon,cur.lat]);
-  const ok=near.id===cur.id&&d<=cur.r;
-  finish(ok, ok?null:(near.id!==cur.id&&km(c,[near.lon,near.lat])<=near.r?`Ты показал: ${near.name}`:`Мимо примерно на ${Math.round(d/10)*10} км`));
-  const series=[{type:"scatter",coordinateSystem:"geo",zlevel:2,data:[pt(cur,18,css("--ok"),true)]},
-    {type:"scatter",coordinateSystem:"geo",zlevel:3,symbol:"pin",symbolSize:26,data:[{value:c,itemStyle:{color:ok?css("--ok"):css("--bad")}}]}];
-  resetSeries(series);
+ if(mode!=="find"||answered||!cur)return;
+ const c=chart.convertFromPixel({geoIndex:0},[x,y]);if(!c)return;
+ lastClick=c;
+ const same=ITEMS.filter(i=>i.cat===cur.cat);
+ let near=same[0],nd=Infinity;
+ const isRiver=cur.cat==="river"&&!!RIVER_PATHS[cur.name];
+ const pixel=[x,y];
+ same.forEach(i=>{
+  const d=isRiver&&RIVER_PATHS[i.name]?riverPixelDistance(pixel,i):km(c,[i.lon,i.lat]);
+  if(d<nd){nd=d;near=i}
+ });
+ const d=isRiver?riverPixelDistance(pixel,cur):km(c,[cur.lon,cur.lat]);
+ // Для пальца допускаем более широкую зону нажатия вдоль всей линии.
+ const tolerance=window.matchMedia?.("(pointer:coarse)").matches?22:14;
+ const ok=isRiver?d<=tolerance:near.id===cur.id&&d<=cur.r;
+ const note=ok?null:isRiver
+  ?(nd<=tolerance&&near.id!==cur.id?`Ты показал: ${near.name}`:"Нажми ближе к голубой линии реки")
+  :(near.id!==cur.id&&km(c,[near.lon,near.lat])<=near.r?`Ты показал: ${near.name}`:`Мимо примерно на ${Math.round(d/10)*10} км`);
+ finish(ok,note);
+ const series=isRiver?[...waterLayers([cur],true)]:[{type:"scatter",coordinateSystem:"geo",zlevel:2,data:[pt(cur,18,css("--ok"),true)]}];
+ series.push({type:"scatter",coordinateSystem:"geo",zlevel:5,symbol:"pin",symbolSize:26,
+  data:[{value:c,itemStyle:{color:ok?css("--ok"):css("--bad")}}]});
+ resetSeries(series);
 }
 
 // ---------- tasks ----------
